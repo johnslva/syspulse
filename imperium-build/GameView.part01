@@ -1,0 +1,220 @@
+    }
+
+    @Override public void run() {
+        lastNs = System.nanoTime();
+        while (running) {
+            if (!surfaceReady) { SystemClock.sleep(30); continue; }
+            long now = System.nanoTime();
+            float dt = Math.min(0.033f, (now - lastNs) / 1_000_000_000f);
+            lastNs = now;
+            if (dt <= 0) dt = 0.016f;
+            fps = fps * 0.92f + (1f / dt) * 0.08f;
+            if (mode == Mode.GAME && !gameOver) update(dt);
+            render();
+            long usedMs = (System.nanoTime() - now) / 1_000_000L;
+            long sleep = 16 - usedMs;
+            if (sleep > 1) SystemClock.sleep(sleep);
+        }
+    }
+
+    private void update(float dt) {
+        long now = SystemClock.uptimeMillis();
+        if (now - incomeTimerMs > 1000) {
+            incomeTimerMs = now;
+            int villagers = 0;
+            for (Unit u : units) if (u.team == TEAM_PLAYER && u.type == UnitType.VILLAGER && u.hp > 0) villagers++;
+            resourcesFood += villagers * 0.75f;
+            resourcesWood += villagers * 0.58f;
+            resourcesGold += villagers * 0.32f;
+        }
+
+        for (int i = 0; i < units.size(); i++) {
+            Unit u = units.get(i);
+            if (u.hp <= 0) continue;
+            u.cooldown -= dt;
+            Unit target = findUnitById(u.targetUnit);
+            if (target != null && target.hp > 0 && target.team != u.team) {
+                float d = distance(u.x, u.y, target.x, target.y);
+                if (d <= u.range + target.radius) {
+                    u.moving = false;
+                    if (u.cooldown <= 0) {
+                        target.hp -= u.attackDamage;
+                        u.cooldown = u.attackCooldown;
+                    }
+                } else {
+                    moveToward(u, target.x, target.y, dt);
+                }
+            } else {
+                u.targetUnit = -1;
+                if (u.moving) moveToward(u, u.tx, u.ty, dt);
+            }
+        }
+
+        separateUnits();
+        units.removeIf(u -> u.hp <= 0);
+        selected.removeIf(id -> findUnitById(id) == null);
+        recountPop();
+        updateAi(now);
+        checkVictory();
+    }
+
+    private void moveToward(Unit u, float tx, float ty, float dt) {
+        float dx = tx - u.x, dy = ty - u.y;
+        float d = (float)Math.sqrt(dx * dx + dy * dy);
+        if (d < 5) { u.moving = false; return; }
+        float step = Math.min(d, u.speed * dt);
+        u.x += dx / d * step;
+        u.y += dy / d * step;
+        u.x = clamp(u.x, 30, WORLD_W - 30);
+        u.y = clamp(u.y, 30, WORLD_H - 30);
+    }
+
+    private void separateUnits() {
+        for (int i = 0; i < units.size(); i++) {
+            Unit a = units.get(i);
+            for (int j = i + 1; j < units.size(); j++) {
+                Unit b = units.get(j);
+                float dx = b.x - a.x, dy = b.y - a.y;
+                float d2 = dx * dx + dy * dy;
+                float min = (a.radius + b.radius) * 0.72f;
+                if (d2 > 1 && d2 < min * min) {
+                    float d = (float)Math.sqrt(d2);
+                    float push = (min - d) * 0.12f;
+                    float nx = dx / d, ny = dy / d;
+                    a.x -= nx * push; a.y -= ny * push;
+                    b.x += nx * push; b.y += ny * push;
+                }
+            }
+        }
+    }
+
+    private void updateAi(long now) {
+        long interval = difficulty == 0 ? 5200 : difficulty == 1 ? 3600 : 2500;
+        if (now - aiTimerMs < interval) return;
+        aiTimerMs = now;
+
+        List<Unit> ai = new ArrayList<>();
+        List<Unit> humans = new ArrayList<>();
+        for (Unit u : units) {
+            if (u.team == TEAM_AI) ai.add(u); else humans.add(u);
+        }
+        if (humans.isEmpty() || ai.isEmpty()) return;
+
+        // Reinforcements scale with difficulty, but population is kept bounded for mobile performance.
+        if (ai.size() < 24 + difficulty * 7) {
+            int next = nextUnitId();
+            UnitType t = random.nextInt(100) < 45 ? UnitType.SWORD : (random.nextBoolean() ? UnitType.ARCHER : UnitType.CAVALRY);
+            units.add(makeUnit(next, TEAM_AI, t, 2380 + random.nextFloat() * 260, 1660 + random.nextFloat() * 220));
+        }
+
+        float aggression = difficulty == 0 ? 0.36f : difficulty == 1 ? 0.65f : 0.88f;
+        for (Unit u : ai) {
+            if (random.nextFloat() > aggression) continue;
+            Unit nearest = null;
+            float best = Float.MAX_VALUE;
+            for (Unit h : humans) {
+                float d = distance(u.x, u.y, h.x, h.y);
+                if (d < best) { best = d; nearest = h; }
+            }
+            if (nearest != null) u.targetUnit = nearest.id;
+        }
+    }
+
+    private int nextUnitId() {
+        int m = 0;
+        for (Unit u : units) m = Math.max(m, u.id);
+        return m + 1;
+    }
+
+    private void recountPop() {
+        playerPop = 0; aiPop = 0;
+        for (Unit u : units) if (u.team == TEAM_PLAYER) playerPop++; else aiPop++;
+    }
+
+    private void checkVictory() {
+        boolean p = false, a = false;
+        for (Unit u : units) if (u.team == TEAM_PLAYER) p = true; else a = true;
+        if (!p) { gameOver = true; endText = "DERROTA"; }
+        else if (!a) { gameOver = true; endText = "VITÓRIA"; }
+    }
+
+    private void render() {
+        Canvas c = null;
+        try {
+            c = holder.lockCanvas();
+            if (c == null) return;
+            if (mode == Mode.MENU) drawMenu(c); else drawGame(c);
+        } finally {
+            if (c != null) holder.unlockCanvasAndPost(c);
+        }
+    }
+
+    private void drawMenu(Canvas c) {
+        int w = c.getWidth(), h = c.getHeight();
+        p.setShader(new LinearGradient(0, 0, w, h, Color.rgb(18, 27, 20), Color.rgb(58, 72, 44), Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p); p.setShader(null);
+
+        // Atmospheric landscape.
+        p.setColor(Color.rgb(80, 94, 56));
+        for (int i = 0; i < 18; i++) {
+            float x = (i * 137) % w;
+            float y = h * 0.55f + (i % 4) * 26;
+            c.drawCircle(x, y, 85 + (i % 3) * 20, p);
+        }
+        drawCastleSilhouette(c, w * 0.73f, h * 0.48f, Math.min(w, h) * 0.50f);
+        p.setColor(0x77000000); c.drawRect(0, 0, w, h, p);
+
+        float title = Math.min(w * 0.075f, h * 0.16f);
+        text.setTextSize(title); text.setColor(0xFFF0D9A4); text.setTextAlign(Paint.Align.CENTER);
+        text.setShadowLayer(8, 0, 5, 0xEE000000);
+        c.drawText("IMPERIUM VALE", w * 0.5f, h * 0.25f, text);
+        text.clearShadowLayer();
+        text.setTextSize(title * 0.28f); text.setColor(0xFFD1C7AD);
+        c.drawText("RTS medieval nativo para Android", w * 0.5f, h * 0.32f, text);
+
+        float bw = Math.min(250, w * 0.21f), bh = Math.min(72, h * 0.12f), gap = 18;
+        float start = w * 0.5f - (bw * 3 + gap * 2) / 2f;
+        float by = h * 0.49f;
+        btnEasy.set(start, by, start + bw, by + bh);
+        btnNormal.set(start + bw + gap, by, start + bw * 2 + gap, by + bh);
+        btnHard.set(start + (bw + gap) * 2, by, start + bw * 3 + gap * 2, by + bh);
+        drawMenuButton(c, btnEasy, "RECRUTA", difficulty == 0);
+        drawMenuButton(c, btnNormal, "COMANDANTE", difficulty == 1);
+        drawMenuButton(c, btnHard, "CONQUISTADOR", difficulty == 2);
+
+        float pw = Math.min(420, w * 0.38f);
+        btnPlay.set(w / 2f - pw / 2, h * 0.68f, w / 2f + pw / 2, h * 0.68f + bh * 1.08f);
+        drawMenuButton(c, btnPlay, "JOGAR", true);
+
+        text.setTextSize(Math.min(25, h * 0.035f)); text.setTextAlign(Paint.Align.CENTER); text.setColor(0xFFB8B4A6);
+        c.drawText("Sem WebView • renderização Android nativa • otimizado para tela horizontal", w / 2f, h * 0.89f, text);
+    }
+
+    private void drawMenuButton(Canvas c, RectF r, String label, boolean active) {
+        p.setColor(active ? 0xEEC7A04D : 0xBB29322A); c.drawRoundRect(r, 12, 12, p);
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2); p.setColor(active ? 0xFFFFE5A9 : 0xFF7E866D); c.drawRoundRect(r, 12, 12, p); p.setStyle(Paint.Style.FILL);
+        text.setTextAlign(Paint.Align.CENTER); text.setTextSize(Math.min(30, r.height() * 0.38f)); text.setColor(active ? 0xFF18150E : Color.WHITE);
+        c.drawText(label, r.centerX(), r.centerY() + text.getTextSize() * 0.35f, text);
+    }
+
+    private void drawGame(Canvas c) {
+        int w = c.getWidth(), h = c.getHeight();
+        p.setColor(0xFF66814A); c.drawRect(0, 0, w, h, p);
+        drawGround(c);
+        drawDecor(c);
+        drawBuildings(c);
+        drawUnits(c);
+        drawSelection(c);
+        drawHud(c);
+        if (draggingSelection && activePointers == 1) drawSelectionBox(c);
+        if (toastUntil > SystemClock.uptimeMillis()) drawToast(c);
+        if (gameOver) drawEndOverlay(c);
+    }
+
+    private void drawGround(Canvas c) {
+        int w = c.getWidth(), h = c.getHeight();
+        int tile = 160;
+        int maxX = (int)(WORLD_W / tile) + 1;
+        int maxY = (int)(WORLD_H / tile) + 1;
+        for (int gy = 0; gy <= maxY; gy++) {
+            for (int gx = 0; gx <= maxX; gx++) {
