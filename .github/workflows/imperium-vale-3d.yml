@@ -24,17 +24,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle 8.9
+      - name: Setup Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.11.1'
 
-      - name: Install Android SDK 35
+      - name: Install Android SDK 36
         shell: bash
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build APK
         working-directory: imperium-3d
@@ -58,21 +58,55 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             APK="$GITHUB_WORKSPACE/imperium-3d/android/build/outputs/apk/debug/android-debug.apk"
+            PKG="com.imperiumvale.game3d"
+            ACTIVITY="$PKG/.AndroidLauncher"
             adb install -r "$APK"
             adb logcat -c
-            adb shell am force-stop com.imperiumvale.game3d
-            adb shell am start -W -n com.imperiumvale.game3d/.AndroidLauncher
+            adb shell am force-stop "$PKG"
+            adb shell am start -W -n "$ACTIVITY"
             sleep 10
-            test -n "$(adb shell pidof com.imperiumvale.game3d | tr -d '\r')"
+            PID="$(adb shell pidof "$PKG" | tr -d '\r')"
+            test -n "$PID"
             ! adb logcat -d | grep -E 'FATAL EXCEPTION|ANR in com\.imperiumvale\.game3d'
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/imperium-3d/smoke-menu.png"
 
-      - name: Upload smoke screenshot
+            SIZE="$(adb shell wm size | tail -1 | awk '{print $3}' | tr -d '\r')"
+            W="${SIZE%x*}"
+            H="${SIZE#*x}"
+            if (( W < H )); then T="$W"; W="$H"; H="$T"; fi
+            adb shell input tap $((W/2)) $((H*72/100))
+            sleep 12
+            PID="$(adb shell pidof "$PKG" | tr -d '\r')"
+            test -n "$PID"
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION|ANR in com\.imperiumvale\.game3d'
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/imperium-3d/smoke-game.png"
+
+            for i in 1 2 3; do
+              adb shell input keyevent 3
+              sleep 1
+              adb shell am start -n "$ACTIVITY"
+              sleep 2
+              test -n "$(adb shell pidof "$PKG" | tr -d '\r')"
+            done
+
+            for i in $(seq 1 18); do
+              X=$((W*20/100 + (i%6)*W*10/100))
+              Y=$((H*25/100 + (i%4)*H*10/100))
+              adb shell input tap "$X" "$Y"
+            done
+            sleep 8
+            test -n "$(adb shell pidof "$PKG" | tr -d '\r')"
+            ! adb logcat -d | grep -E 'FATAL EXCEPTION|ANR in com\.imperiumvale\.game3d'
+            adb shell dumpsys meminfo "$PKG" | grep -E 'TOTAL PSS|TOTAL RSS|Native Heap|Java Heap' || true
+
+      - name: Upload smoke screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: imperium-vale-3d-smoke-menu
-          path: imperium-3d/smoke-menu.png
+          name: imperium-vale-3d-smoke-screens
+          path: |
+            imperium-3d/smoke-menu.png
+            imperium-3d/smoke-game.png
           if-no-files-found: ignore
           retention-days: 7
 
@@ -81,13 +115,13 @@ jobs:
         run: |
           mkdir -p output
           cp imperium-3d/android/build/outputs/apk/debug/android-debug.apk \
-            output/Imperium-Vale-3D-v0.4.0-alpha.apk
-          sha256sum output/Imperium-Vale-3D-v0.4.0-alpha.apk
+            output/Imperium-Vale-3D-v0.4.1-alpha.apk
+          sha256sum output/Imperium-Vale-3D-v0.4.1-alpha.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Imperium-Vale-3D-v0.4.0-alpha-apk
-          path: output/Imperium-Vale-3D-v0.4.0-alpha.apk
+          name: Imperium-Vale-3D-v0.4.1-alpha-apk
+          path: output/Imperium-Vale-3D-v0.4.1-alpha.apk
           if-no-files-found: error
           retention-days: 7
