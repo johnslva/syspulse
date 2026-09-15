@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -67,9 +67,9 @@ jobs:
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   requestWindowFeature(Window.FEATURE_NO_TITLE);
-                  hideSystemUi();
                   gameView = new GameView(this);
                   setContentView(gameView);
+                  hideSystemUi();
               }
 
               private void hideSystemUi() {
@@ -142,8 +142,8 @@ jobs:
                   applicationId 'com.imperiumvale.game'
                   minSdk 26
                   targetSdk 35
-                  versionCode 1
-                  versionName '0.3.0-native'
+                  versionCode 2
+                  versionName '0.3.1-native'
               }
 
               buildTypes {
@@ -188,18 +188,54 @@ jobs:
         working-directory: imperium-build/project
         run: gradle --no-daemon :app:assembleDebug
 
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Smoke test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            APK="$GITHUB_WORKSPACE/imperium-build/project/app/build/outputs/apk/debug/app-debug.apk"
+            adb install -r "$APK"
+            adb logcat -c
+            adb shell am force-stop com.imperiumvale.game
+            adb shell am start -W -n com.imperiumvale.game/.MainActivity
+            sleep 8
+            PID="$(adb shell pidof com.imperiumvale.game | tr -d '\r')"
+            if [ -z "$PID" ]; then
+              echo 'Imperium Vale process is not alive after startup.'
+              adb logcat -d '*:E'
+              exit 1
+            fi
+            if adb logcat -d | grep -E 'FATAL EXCEPTION|AndroidRuntime:.*Process: com\.imperiumvale\.game'; then
+              echo 'Fatal Android exception detected.'
+              exit 1
+            fi
+            echo "Startup smoke test passed; PID=$PID"
+
       - name: Prepare artifact
         shell: bash
         run: |
           mkdir -p output
           cp imperium-build/project/app/build/outputs/apk/debug/app-debug.apk \
-             output/Imperium-Vale-v0.3.0-native.apk
-          sha256sum output/Imperium-Vale-v0.3.0-native.apk
+             output/Imperium-Vale-v0.3.1-native.apk
+          sha256sum output/Imperium-Vale-v0.3.1-native.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Imperium-Vale-v0.3.0-native-apk
-          path: output/Imperium-Vale-v0.3.0-native.apk
+          name: Imperium-Vale-v0.3.1-native-apk
+          path: output/Imperium-Vale-v0.3.1-native.apk
           if-no-files-found: error
           retention-days: 7
