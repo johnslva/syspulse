@@ -142,8 +142,8 @@ jobs:
                   applicationId 'com.imperiumvale.game'
                   minSdk 26
                   targetSdk 35
-                  versionCode 2
-                  versionName '0.3.1-native'
+                  versionCode 3
+                  versionName '0.3.2-native'
               }
 
               buildTypes {
@@ -204,38 +204,29 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            APK="$GITHUB_WORKSPACE/imperium-build/project/app/build/outputs/apk/debug/app-debug.apk"
-            adb install -r "$APK"
-            adb logcat -c
-            adb shell am force-stop com.imperiumvale.game
-            adb shell am start -W -n com.imperiumvale.game/.MainActivity
-            sleep 8
-            PID="$(adb shell pidof com.imperiumvale.game | tr -d '\r')"
-            if [ -z "$PID" ]; then
-              echo 'Imperium Vale process is not alive after startup.'
-              adb logcat -d '*:E'
-              exit 1
-            fi
-            if adb logcat -d | grep -E 'FATAL EXCEPTION|AndroidRuntime:.*Process: com\.imperiumvale\.game'; then
-              echo 'Fatal Android exception detected.'
-              exit 1
-            fi
-            echo "Startup smoke test passed; PID=$PID"
+          script: bash "$GITHUB_WORKSPACE/imperium-build/smoke-test.sh"
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: imperium-vale-smoke-screen
+          path: imperium-build/smoke-screen.png
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Prepare artifact
         shell: bash
         run: |
           mkdir -p output
           cp imperium-build/project/app/build/outputs/apk/debug/app-debug.apk \
-             output/Imperium-Vale-v0.3.1-native.apk
-          sha256sum output/Imperium-Vale-v0.3.1-native.apk
+             output/Imperium-Vale-v0.3.2-native.apk
+          sha256sum output/Imperium-Vale-v0.3.2-native.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Imperium-Vale-v0.3.1-native-apk
-          path: output/Imperium-Vale-v0.3.1-native.apk
+          name: Imperium-Vale-v0.3.2-native-apk
+          path: output/Imperium-Vale-v0.3.2-native.apk
           if-no-files-found: error
           retention-days: 7
