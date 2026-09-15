@@ -20,7 +20,7 @@ public final class AndroidLauncher extends AndroidApplication {
         config.useAccelerometer = false;
         config.useCompass = false;
         config.useGyroscope = false;
-        config.numSamples = 0;
+        config.numSamples = 2;
         config.useGL30 = true;
 
         initialize(new ImperiumGameV7(), config);
