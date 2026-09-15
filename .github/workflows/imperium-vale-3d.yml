@@ -56,48 +56,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            APK="$GITHUB_WORKSPACE/imperium-3d/android/build/outputs/apk/debug/android-debug.apk"
-            PKG="com.imperiumvale.game3d"
-            ACTIVITY="$PKG/.AndroidLauncher"
-            adb install -r "$APK"
-            adb logcat -c
-            adb shell am force-stop "$PKG"
-            adb shell am start -W -n "$ACTIVITY"
-            sleep 10
-            PID="$(adb shell pidof "$PKG" | tr -d '\r')"
-            test -n "$PID"
-            ! adb logcat -d | grep -E 'FATAL EXCEPTION|ANR in com\.imperiumvale\.game3d'
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/imperium-3d/smoke-menu.png"
-
-            SIZE="$(adb shell wm size | tail -1 | awk '{print $3}' | tr -d '\r')"
-            W="${SIZE%x*}"
-            H="${SIZE#*x}"
-            if (( W < H )); then T="$W"; W="$H"; H="$T"; fi
-            adb shell input tap $((W/2)) $((H*72/100))
-            sleep 12
-            PID="$(adb shell pidof "$PKG" | tr -d '\r')"
-            test -n "$PID"
-            ! adb logcat -d | grep -E 'FATAL EXCEPTION|ANR in com\.imperiumvale\.game3d'
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/imperium-3d/smoke-game.png"
-
-            for i in 1 2 3; do
-              adb shell input keyevent 3
-              sleep 1
-              adb shell am start -n "$ACTIVITY"
-              sleep 2
-              test -n "$(adb shell pidof "$PKG" | tr -d '\r')"
-            done
-
-            for i in $(seq 1 18); do
-              X=$((W*20/100 + (i%6)*W*10/100))
-              Y=$((H*25/100 + (i%4)*H*10/100))
-              adb shell input tap "$X" "$Y"
-            done
-            sleep 8
-            test -n "$(adb shell pidof "$PKG" | tr -d '\r')"
-            ! adb logcat -d | grep -E 'FATAL EXCEPTION|ANR in com\.imperiumvale\.game3d'
-            adb shell dumpsys meminfo "$PKG" | grep -E 'TOTAL PSS|TOTAL RSS|Native Heap|Java Heap' || true
+          script: bash "$GITHUB_WORKSPACE/imperium-3d/smoke-test.sh"
 
       - name: Upload smoke screenshots
         if: always()
@@ -107,6 +66,7 @@ jobs:
           path: |
             imperium-3d/smoke-menu.png
             imperium-3d/smoke-game.png
+            imperium-3d/smoke-game-stress.png
           if-no-files-found: ignore
           retention-days: 7
 
