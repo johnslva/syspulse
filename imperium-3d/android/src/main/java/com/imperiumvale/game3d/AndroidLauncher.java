@@ -4,7 +4,7 @@ import android.os.Bundle;
 
 import com.badlogic.gdx.backends.android.AndroidApplication;
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
-import com.imperiumvale.core.ImperiumGame;
+import com.imperiumvale.core.ImperiumGameV2;
 
 public final class AndroidLauncher extends AndroidApplication {
     @Override
@@ -19,6 +19,6 @@ public final class AndroidLauncher extends AndroidApplication {
         config.numSamples = 2;
         config.useGL30 = true;
 
-        initialize(new ImperiumGame(), config);
+        initialize(new ImperiumGameV2(), config);
     }
 }
