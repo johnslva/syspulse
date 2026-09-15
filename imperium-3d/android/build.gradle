@@ -1,0 +1,84 @@
+plugins {
+    id 'com.android.application'
+}
+
+configurations {
+    natives
+}
+
+android {
+    namespace 'com.imperiumvale.game3d'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.imperiumvale.game3d'
+        minSdk 26
+        targetSdk 35
+        versionCode 4
+        versionName '0.4.0-alpha'
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ['../assets']
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        resources.excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*']
+    }
+}
+
+dependencies {
+    implementation project(':core')
+    implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+    natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+    natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
+}
+
+tasks.register('copyAndroidNatives') {
+    doLast {
+        file('src/main/jniLibs/arm64-v8a').mkdirs()
+        file('src/main/jniLibs/x86_64').mkdirs()
+        configurations.natives.files.each { jar ->
+            if (jar.name.contains('natives-arm64-v8a')) {
+                copy {
+                    from zipTree(jar)
+                    into 'src/main/jniLibs/arm64-v8a'
+                    include '*.so'
+                }
+            }
+            if (jar.name.contains('natives-x86_64')) {
+                copy {
+                    from zipTree(jar)
+                    into 'src/main/jniLibs/x86_64'
+                    include '*.so'
+                }
+            }
+        }
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn 'copyAndroidNatives'
+}
