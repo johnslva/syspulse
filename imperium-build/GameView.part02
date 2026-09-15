@@ -1,0 +1,220 @@
+                float wx = gx * tile, wy = gy * tile;
+                PointF s = toScreen(wx, wy, w, h);
+                float tw = tile * ISO_X * zoom;
+                float th = tile * ISO_Y * zoom;
+                if (s.x < -tw || s.x > w + tw || s.y < -th || s.y > h + th) continue;
+                int hash = (gx * 31 + gy * 17) & 7;
+                int base = 103 + hash * 2;
+                p.setColor(Color.rgb(base, 126 + hash, 73 + hash / 2));
+                path.reset();
+                path.moveTo(s.x, s.y - th);
+                path.lineTo(s.x + tw, s.y);
+                path.lineTo(s.x, s.y + th);
+                path.lineTo(s.x - tw, s.y);
+                path.close();
+                c.drawPath(path, p);
+                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(Math.max(1, zoom)); p.setColor(0x18405028); c.drawPath(path, p); p.setStyle(Paint.Style.FILL);
+            }
+        }
+        // Dirt road between bases.
+        p.setColor(0x66C2A26B); p.setStrokeWidth(78 * zoom); p.setStyle(Paint.Style.STROKE);
+        PointF a = toScreen(850, 980, w, h), b = toScreen(1450, 1220, w, h), d = toScreen(2360, 1700, w, h);
+        Path road = new Path(); road.moveTo(a.x, a.y); road.quadTo(b.x, b.y, d.x, d.y); c.drawPath(road, p); p.setStyle(Paint.Style.FILL);
+    }
+
+    private void drawDecor(Canvas c) {
+        int w = c.getWidth(), h = c.getHeight();
+        for (Deco d : deco) {
+            PointF s = toScreen(d.x, d.y, w, h);
+            if (s.x < -80 || s.x > w + 80 || s.y < -120 || s.y > h + 80) continue;
+            float z = zoom * d.s;
+            if (d.kind == 0) drawTree(c, s.x, s.y, z);
+            else if (d.kind == 1) drawRock(c, s.x, s.y, z);
+            else drawBush(c, s.x, s.y, z);
+        }
+    }
+
+    private void drawTree(Canvas c, float x, float y, float z) {
+        p.setColor(0x44111111); c.drawOval(new RectF(x - 26*z, y - 10*z, x + 30*z, y + 12*z), p);
+        p.setColor(0xFF5A3B25); c.drawRect(x - 5*z, y - 44*z, x + 5*z, y, p);
+        p.setColor(0xFF2F5631); c.drawCircle(x - 12*z, y - 55*z, 26*z, p);
+        p.setColor(0xFF3C6938); c.drawCircle(x + 10*z, y - 61*z, 31*z, p);
+        p.setColor(0xFF527944); c.drawCircle(x + 1*z, y - 82*z, 25*z, p);
+    }
+
+    private void drawRock(Canvas c, float x, float y, float z) {
+        p.setColor(0x44222222); c.drawOval(new RectF(x - 22*z, y - 8*z, x + 22*z, y + 10*z), p);
+        p.setColor(0xFF7B7D72); path.reset(); path.moveTo(x-18*z,y); path.lineTo(x-10*z,y-24*z); path.lineTo(x+10*z,y-29*z); path.lineTo(x+22*z,y-4*z); path.close(); c.drawPath(path,p);
+        p.setColor(0xFF9B9D8F); path.reset(); path.moveTo(x-10*z,y-24*z); path.lineTo(x+10*z,y-29*z); path.lineTo(x+2*z,y-12*z); path.close(); c.drawPath(path,p);
+    }
+
+    private void drawBush(Canvas c, float x, float y, float z) {
+        p.setColor(0xFF46643C); c.drawCircle(x-9*z,y-9*z,14*z,p); c.drawCircle(x+8*z,y-10*z,17*z,p); c.drawCircle(x,y-22*z,13*z,p);
+    }
+
+    private void drawBuildings(Canvas c) {
+        int w = c.getWidth(), h = c.getHeight();
+        List<Building> sorted = new ArrayList<>(buildings);
+        sorted.sort((a,b) -> Float.compare(a.x+a.y, b.x+b.y));
+        for (Building b : sorted) {
+            PointF s = toScreen(b.x, b.y, w, h);
+            if (s.x < -250 || s.x > w+250 || s.y < -300 || s.y > h+250) continue;
+            switch (b.type) {
+                case TOWN: drawTown(c, s.x, s.y, b.team, zoom); break;
+                case KEEP: drawKeep(c, s.x, s.y, b.team, zoom); break;
+                case BARRACKS: drawHouseLike(c, s.x, s.y, b.team, zoom, true); break;
+                case HOUSE: drawHouseLike(c, s.x, s.y, b.team, zoom, false); break;
+                case TOWER: drawTower(c, s.x, s.y, b.team, zoom); break;
+                case WALL: drawWall(c, b, w, h); break;
+                default: drawHouseLike(c, s.x, s.y, b.team, zoom, false); break;
+            }
+        }
+    }
+
+    private int teamColor(int team) { return team == TEAM_PLAYER ? 0xFF2E79D0 : 0xFFC94B3E; }
+
+    private void drawTown(Canvas c, float x, float y, int team, float z) {
+        p.setColor(0x55222222); c.drawOval(new RectF(x-95*z,y-28*z,x+105*z,y+33*z),p);
+        drawStoneBlock(c,x,y,180*z,92*z,72*z,team);
+        p.setColor(0xFF55382C); path.reset(); path.moveTo(x-104*z,y-73*z); path.lineTo(x,y-126*z); path.lineTo(x+104*z,y-73*z); path.lineTo(x,y-28*z); path.close(); c.drawPath(path,p);
+        p.setColor(0xFF7D553A); path.reset(); path.moveTo(x,y-126*z); path.lineTo(x+104*z,y-73*z); path.lineTo(x,y-28*z); path.close(); c.drawPath(path,p);
+        p.setColor(teamColor(team)); c.drawRect(x-6*z,y-112*z,x+7*z,y-65*z,p); path.reset(); path.moveTo(x+7*z,y-111*z); path.lineTo(x+43*z,y-100*z); path.lineTo(x+7*z,y-89*z); path.close(); c.drawPath(path,p);
+    }
+
+    private void drawKeep(Canvas c, float x, float y, int team, float z) {
+        p.setColor(0x55222222); c.drawOval(new RectF(x-116*z,y-30*z,x+122*z,y+38*z),p);
+        drawStoneBlock(c,x,y,214*z,118*z,118*z,team);
+        for (int i=-2;i<=2;i++) {
+            p.setColor(0xFFB7B09C); c.drawRect(x+i*42*z-11*z,y-134*z,x+i*42*z+11*z,y-105*z,p);
+        }
+        drawTower(c,x-88*z,y-20*z,team,z*0.82f); drawTower(c,x+88*z,y+18*z,team,z*0.82f);
+    }
+
+    private void drawStoneBlock(Canvas c,float x,float y,float bw,float bh,float height,int team) {
+        float z = zoom;
+        p.setColor(0xFF9C9A8F); path.reset(); path.moveTo(x-bw/2,y-bh/4); path.lineTo(x,y-bh/2); path.lineTo(x+bw/2,y-bh/4); path.lineTo(x+bw/2,y-bh/4-height); path.lineTo(x,y-bh/2-height); path.lineTo(x-bw/2,y-bh/4-height); path.close(); c.drawPath(path,p);
+        p.setColor(0xFF797A73); path.reset(); path.moveTo(x-bw/2,y-bh/4); path.lineTo(x,y); path.lineTo(x,y-height-bh/4); path.lineTo(x-bw/2,y-bh/4-height); path.close(); c.drawPath(path,p);
+        p.setColor(0xFF858781); path.reset(); path.moveTo(x,y); path.lineTo(x+bw/2,y-bh/4); path.lineTo(x+bw/2,y-bh/4-height); path.lineTo(x,y-height-bh/4); path.close(); c.drawPath(path,p);
+        p.setColor(teamColor(team)); c.drawRect(x-bw*0.20f,y-height*0.68f,x-bw*0.08f,y-height*0.20f,p);
+    }
+
+    private void drawHouseLike(Canvas c,float x,float y,int team,float z,boolean military) {
+        p.setColor(0x44222222); c.drawOval(new RectF(x-66*z,y-18*z,x+70*z,y+25*z),p);
+        p.setColor(0xFFD2C5A8); path.reset(); path.moveTo(x-62*z,y-10*z); path.lineTo(x,y+22*z); path.lineTo(x+62*z,y-10*z); path.lineTo(x+62*z,y-64*z); path.lineTo(x,y-32*z); path.lineTo(x-62*z,y-64*z); path.close(); c.drawPath(path,p);
+        p.setColor(military?0xFF6F4330:0xFF714D37); path.reset(); path.moveTo(x-76*z,y-65*z); path.lineTo(x,y-105*z); path.lineTo(x+76*z,y-65*z); path.lineTo(x,y-28*z); path.close(); c.drawPath(path,p);
+        p.setColor(teamColor(team)); c.drawRect(x-8*z,y-86*z,x+7*z,y-49*z,p);
+        if (military) { p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(4*z); p.setColor(0xFF4D382B); c.drawCircle(x+28*z,y-33*z,14*z,p); p.setStyle(Paint.Style.FILL); }
+    }
+
+    private void drawTower(Canvas c,float x,float y,int team,float z) {
+        p.setColor(0x44222222); c.drawOval(new RectF(x-42*z,y-12*z,x+44*z,y+18*z),p);
+        p.setColor(0xFF8D8C84); c.drawRect(x-31*z,y-84*z,x+31*z,y,p);
+        p.setColor(0xFFB0AA98); c.drawRect(x-38*z,y-98*z,x+38*z,y-75*z,p);
+        for(int i=-1;i<=1;i++){ p.setColor(0xFFB9B39F); c.drawRect(x+i*25*z-7*z,y-112*z,x+i*25*z+7*z,y-91*z,p); }
+        p.setColor(teamColor(team)); c.drawRect(x-4*z,y-105*z,x+5*z,y-66*z,p);
+    }
+
+    private void drawWall(Canvas c, Building b, int sw, int sh) {
+        // Long wall is represented by its w/h axis in world space.
+        float x1 = b.x - b.w/2, y1 = b.y - b.h/2, x2 = b.x + b.w/2, y2 = b.y + b.h/2;
+        PointF a = toScreen(x1,y1,sw,sh), d = toScreen(x2,y2,sw,sh);
+        p.setStrokeWidth(34*zoom); p.setColor(0xFF767873); p.setStyle(Paint.Style.STROKE); c.drawLine(a.x,a.y-28*zoom,d.x,d.y-28*zoom,p);
+        p.setStrokeWidth(8*zoom); p.setColor(0xFFB2AE9D); c.drawLine(a.x,a.y-47*zoom,d.x,d.y-47*zoom,p); p.setStyle(Paint.Style.FILL);
+    }
+
+    private void drawCastleSilhouette(Canvas c,float x,float y,float s) {
+        p.setColor(0xFF151B15); c.drawRect(x-s*0.34f,y-s*0.35f,x+s*0.34f,y+s*0.20f,p);
+        c.drawRect(x-s*0.46f,y-s*0.48f,x-s*0.27f,y+s*0.20f,p); c.drawRect(x+s*0.27f,y-s*0.48f,x+s*0.46f,y+s*0.20f,p);
+        for(int i=-3;i<=3;i++) c.drawRect(x+i*s*0.1f-s*0.03f,y-s*0.43f,x+i*s*0.1f+s*0.03f,y-s*0.30f,p);
+    }
+
+    private void drawUnits(Canvas c) {
+        int w = c.getWidth(), h = c.getHeight();
+        List<Unit> sorted = new ArrayList<>(units);
+        sorted.sort((a,b) -> Float.compare(a.x+a.y, b.x+b.y));
+        for (Unit u : sorted) {
+            PointF s = toScreen(u.x,u.y,w,h);
+            if(s.x < -80 || s.x > w+80 || s.y < -120 || s.y > h+80) continue;
+            drawUnit(c,u,s.x,s.y,zoom);
+        }
+    }
+
+    private void drawUnit(Canvas c, Unit u, float x, float y, float z) {
+        boolean sel = selected.contains(u.id);
+        if(sel){ p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3*z); p.setColor(0xFFE9D56F); c.drawOval(new RectF(x-25*z,y-10*z,x+25*z,y+11*z),p); p.setStyle(Paint.Style.FILL); }
+        p.setColor(0x55222222); c.drawOval(new RectF(x-20*z,y-6*z,x+22*z,y+9*z),p);
+        if(u.type == UnitType.CAVALRY){
+            p.setColor(0xFF6C4B32); c.drawOval(new RectF(x-21*z,y-37*z,x+24*z,y-8*z),p); c.drawCircle(x+18*z,y-32*z,10*z,p);
+            p.setColor(0xFFE1D9C7); c.drawRect(x-8*z,y-65*z,x+10*z,y-30*z,p);
+            p.setColor(teamColor(u.team)); c.drawRect(x-10*z,y-58*z,x+12*z,y-43*z,p);
+            p.setColor(0xFF494B4C); c.drawCircle(x+2*z,y-70*z,9*z,p);
+            p.setColor(0xFFDAD5C7); p.setStrokeWidth(3*z); c.drawLine(x+13*z,y-55*z,x+43*z,y-75*z,p);
+        } else {
+            p.setColor(0xFFE1D4B6); c.drawCircle(x,y-55*z,9*z,p);
+            p.setColor(0xFF42464A); c.drawCircle(x,y-61*z,9*z,p);
+            p.setColor(teamColor(u.team)); c.drawRect(x-10*z,y-49*z,x+10*z,y-23*z,p);
+            p.setColor(0xFFD8D5CB); c.drawRect(x-8*z,y-24*z,x-2*z,y-2*z,p); c.drawRect(x+2*z,y-24*z,x+8*z,y-2*z,p);
+            if(u.type == UnitType.SWORD){ p.setColor(0xFFE2E0D7); p.setStrokeWidth(4*z); c.drawLine(x+11*z,y-43*z,x+30*z,y-68*z,p); p.setColor(0xFFB9B5AA); c.drawCircle(x-13*z,y-37*z,11*z,p); }
+            else if(u.type == UnitType.ARCHER){ p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3*z); p.setColor(0xFF6F4A2C); c.drawArc(new RectF(x+7*z,y-63*z,x+39*z,y-24*z),-95,185,false,p); p.setStyle(Paint.Style.FILL); }
+            else { p.setColor(0xFF6A492F); c.drawRect(x+10*z,y-47*z,x+25*z,y-43*z,p); }
+        }
+        if(u.hp < u.maxHp){
+            float bw=38*z; p.setColor(0xAA241D1D); c.drawRect(x-bw/2,y-86*z,x+bw/2,y-81*z,p); p.setColor(0xFF72C665); c.drawRect(x-bw/2,y-86*z,x-bw/2+bw*(u.hp/u.maxHp),y-81*z,p);
+        }
+    }
+
+    private void drawSelection(Canvas c) {
+        // command marker / UI details are handled in unit rendering.
+    }
+
+    private void drawHud(Canvas c) {
+        int w=c.getWidth(), h=c.getHeight();
+        float topH=Math.min(78,h*0.12f);
+        p.setColor(0xD0181C18); c.drawRect(0,0,w,topH,p);
+        text.setTextAlign(Paint.Align.LEFT); text.setTextSize(Math.min(30,topH*0.38f)); text.setColor(0xFFF1E7CB);
+        c.drawText("🍖 "+(int)resourcesFood,20,topH*0.62f,text);
+        c.drawText("🪵 "+(int)resourcesWood,170,topH*0.62f,text);
+        c.drawText("◉ "+(int)resourcesGold,330,topH*0.62f,text);
+        c.drawText("⚔ "+playerPop+"/50",470,topH*0.62f,text);
+        text.setTextAlign(Paint.Align.RIGHT); text.setColor(0xFFBCC9B9); text.setTextSize(Math.min(21,topH*0.28f));
+        c.drawText(String.format(Locale.US,"%.0f FPS",Math.min(99,fps)),w-18,topH*0.58f,text);
+
+        float bh=Math.min(74,h*0.13f), bw=Math.min(155,w*0.16f), gap=10;
+        float y=h-bh-14, x=w-(bw*4+gap*3)-16;
+        btnTrainVillager.set(x,y,x+bw,y+bh); x+=bw+gap;
+        btnTrainSword.set(x,y,x+bw,y+bh); x+=bw+gap;
+        btnTrainArcher.set(x,y,x+bw,y+bh); x+=bw+gap;
+        btnTrainCavalry.set(x,y,x+bw,y+bh);
+        drawHudButton(c,btnTrainVillager,"ALDEÃO","50 🍖");
+        drawHudButton(c,btnTrainSword,"ESPADA","60 🍖 20 ◉");
+        drawHudButton(c,btnTrainArcher,"ARQUEIRO","45 🪵 30 ◉");
+        drawHudButton(c,btnTrainCavalry,"CAVALARIA","90 🍖 60 ◉");
+
+        // Minimap.
+        float mw=Math.min(210,w*0.18f), mh=mw*0.62f; RectF map=new RectF(14,h-mh-15,14+mw,h-15);
+        p.setColor(0xD0172118); c.drawRoundRect(map,10,10,p); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2); p.setColor(0xFF9E9B78); c.drawRoundRect(map,10,10,p); p.setStyle(Paint.Style.FILL);
+        for(Unit u:units){ float mx=map.left+(u.x/WORLD_W)*map.width(), my=map.top+(u.y/WORLD_H)*map.height(); p.setColor(teamColor(u.team)); c.drawCircle(mx,my,2.8f,p); }
+    }
+
+    private void drawHudButton(Canvas c,RectF r,String a,String b){
+        p.setColor(0xE72A3129); c.drawRoundRect(r,10,10,p); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2); p.setColor(0xFF8C927A); c.drawRoundRect(r,10,10,p); p.setStyle(Paint.Style.FILL);
+        text.setTextAlign(Paint.Align.CENTER); text.setColor(0xFFF0E9D3); text.setTextSize(Math.min(20,r.height()*0.27f)); c.drawText(a,r.centerX(),r.top+r.height()*0.43f,text);
+        text.setTextSize(Math.min(15,r.height()*0.20f)); text.setColor(0xFFC7B882); c.drawText(b,r.centerX(),r.top+r.height()*0.75f,text);
+    }
+
+    private void drawSelectionBox(Canvas c){ p.setColor(0x333CA9F5); RectF r=new RectF(Math.min(downX,lastTouchX),Math.min(downY,lastTouchY),Math.max(downX,lastTouchX),Math.max(downY,lastTouchY)); c.drawRect(r,p); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2); p.setColor(0xFF82C8FF); c.drawRect(r,p); p.setStyle(Paint.Style.FILL); }
+
+    private void drawToast(Canvas c){ int w=c.getWidth(),h=c.getHeight(); text.setTextAlign(Paint.Align.CENTER); text.setTextSize(Math.min(24,h*0.036f)); float tw=text.measureText(toast)+44; RectF r=new RectF(w/2f-tw/2,h*0.15f,w/2f+tw/2,h*0.15f+52); p.setColor(0xDD161B16); c.drawRoundRect(r,20,20,p); text.setColor(Color.WHITE); c.drawText(toast,w/2f,r.centerY()+8,text); }
+
+    private void drawEndOverlay(Canvas c){ int w=c.getWidth(),h=c.getHeight(); p.setColor(0xAA000000); c.drawRect(0,0,w,h,p); text.setTextAlign(Paint.Align.CENTER); text.setTextSize(Math.min(86,h*0.15f)); text.setColor(endText.equals("VITÓRIA")?0xFFF1D477:0xFFE06156); c.drawText(endText,w/2f,h*0.45f,text); text.setTextSize(Math.min(28,h*0.05f)); text.setColor(Color.WHITE); c.drawText("Toque para voltar ao menu",w/2f,h*0.56f,text); }
+
+    @Override public boolean onTouchEvent(MotionEvent e) {
+        activePointers = e.getPointerCount();
+        if (mode == Mode.MENU) return handleMenuTouch(e);
+        if (gameOver && e.getActionMasked() == MotionEvent.ACTION_UP) { mode = Mode.MENU; return true; }
+
+        int action=e.getActionMasked();
+        if(action==MotionEvent.ACTION_DOWN){
+            downX=lastTouchX=e.getX(); downY=lastTouchY=e.getY(); draggingSelection=false; panning=false;
+            return true;
+        }
