@@ -27,6 +27,8 @@ assert_alive() {
 }
 
 adb install -r "$APK"
+# Prevent Android's first-use immersive tutorial from covering screenshots/taps.
+adb shell settings put secure immersive_mode_confirmations confirmed || true
 adb logcat -c
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$ACTIVITY"
