@@ -75,13 +75,13 @@ jobs:
         run: |
           mkdir -p output
           cp imperium-3d/android/build/outputs/apk/debug/android-debug.apk \
-            output/Imperium-Vale-3D-v0.5.0-alpha.apk
-          sha256sum output/Imperium-Vale-3D-v0.5.0-alpha.apk
+            output/Imperium-Vale-3D-v0.6.0-alpha.apk
+          sha256sum output/Imperium-Vale-3D-v0.6.0-alpha.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Imperium-Vale-3D-v0.5.0-alpha-apk
-          path: output/Imperium-Vale-3D-v0.5.0-alpha.apk
+          name: Imperium-Vale-3D-v0.6.0-alpha-apk
+          path: output/Imperium-Vale-3D-v0.6.0-alpha.apk
           if-no-files-found: error
           retention-days: 7
