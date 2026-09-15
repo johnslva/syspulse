@@ -205,7 +205,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             APK="$GITHUB_WORKSPACE/imperium-build/project/app/build/outputs/apk/debug/app-debug.apk"
             adb install -r "$APK"
             adb logcat -c
