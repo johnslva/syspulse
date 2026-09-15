@@ -44,11 +44,10 @@ if (( W < H )); then
   H="$T"
 fi
 
-# The actual play button sits near the vertical center of the landscape menu.
-adb shell input tap $((W / 2)) $((H * 51 / 100))
+# Verified against the 2400x1080 menu capture: JOGAR is centered near 65% Y.
+adb shell input tap $((W / 2)) $((H * 65 / 100))
 sleep 2
 assert_alive "HD match startup"
-# Capture while V5 intentionally keeps the first seconds in full detail.
 adb exec-out screencap -p > "$OUT/smoke-game.png"
 
 # Give the adaptive renderer time to react before stress testing.
