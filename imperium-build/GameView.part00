@@ -1,0 +1,220 @@
+package com.imperiumvale.game;
+
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PointF;
+import android.graphics.RectF;
+import android.graphics.Shader;
+import android.os.SystemClock;
+import android.view.MotionEvent;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Random;
+import java.util.Set;
+
+/**
+ * Native Android RTS renderer. No WebView, HTML or JavaScript.
+ * Rendering is done directly to an Android SurfaceView.
+ */
+public final class GameView extends SurfaceView implements SurfaceHolder.Callback, Runnable {
+    private static final float WORLD_W = 3200f;
+    private static final float WORLD_H = 2500f;
+    private static final float ISO_X = 0.72f;
+    private static final float ISO_Y = 0.36f;
+    private static final int TEAM_PLAYER = 0;
+    private static final int TEAM_AI = 1;
+
+    private final SurfaceHolder holder;
+    private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+    private final Path path = new Path();
+    private final Random random = new Random(1219);
+    private final List<Unit> units = new ArrayList<>();
+    private final List<Building> buildings = new ArrayList<>();
+    private final List<Deco> deco = new ArrayList<>();
+    private final Set<Integer> selected = new HashSet<>();
+
+    private Thread loopThread;
+    private volatile boolean running;
+    private volatile boolean surfaceReady;
+
+    private Mode mode = Mode.MENU;
+    private int difficulty = 1;
+    private long lastNs;
+    private float fps = 60f;
+    private float camX = 770f;
+    private float camY = 800f;
+    private float zoom = 0.90f;
+    private float resourcesFood = 520;
+    private float resourcesWood = 480;
+    private float resourcesGold = 340;
+    private int playerPop = 0;
+    private int aiPop = 0;
+    private boolean gameOver;
+    private String endText = "";
+    private long aiTimerMs;
+    private long incomeTimerMs;
+    private long toastUntil;
+    private String toast = "";
+
+    private float downX, downY, lastTouchX, lastTouchY;
+    private boolean draggingSelection;
+    private boolean panning;
+    private int activePointers;
+    private float pinchStartDist;
+    private float pinchStartZoom;
+    private long lastTapTime;
+    private float lastTapX, lastTapY;
+
+    private final RectF btnEasy = new RectF();
+    private final RectF btnNormal = new RectF();
+    private final RectF btnHard = new RectF();
+    private final RectF btnPlay = new RectF();
+    private final RectF btnTrainSword = new RectF();
+    private final RectF btnTrainArcher = new RectF();
+    private final RectF btnTrainCavalry = new RectF();
+    private final RectF btnTrainVillager = new RectF();
+    private final RectF btnFullscreenHint = new RectF();
+
+    private enum Mode { MENU, GAME }
+    private enum UnitType { VILLAGER, SWORD, ARCHER, CAVALRY }
+    private enum BuildingType { TOWN, KEEP, HOUSE, BARRACKS, ARCHERY, STABLE, TOWER, WALL }
+
+    private static final class Unit {
+        int id, team;
+        UnitType type;
+        float x, y, tx, ty;
+        float hp, maxHp;
+        float speed, radius;
+        float attackDamage, range, attackCooldown, cooldown;
+        int targetUnit = -1;
+        boolean moving;
+        float phase;
+
+        Unit(int id, int team, UnitType type, float x, float y) {
+            this.id = id;
+            this.team = team;
+            this.type = type;
+            this.x = x;
+            this.y = y;
+            this.tx = x;
+            this.ty = y;
+            this.phase = (id * 1.7f) % 6.28f;
+            switch (type) {
+                case VILLAGER:
+                    maxHp = 62; speed = 88; radius = 18; attackDamage = 5; range = 30; attackCooldown = 1.1f; break;
+                case SWORD:
+                    maxHp = 110; speed = 82; radius = 20; attackDamage = 17; range = 35; attackCooldown = 0.95f; break;
+                case ARCHER:
+                    maxHp = 76; speed = 86; radius = 18; attackDamage = 13; range = 175; attackCooldown = 1.18f; break;
+                default:
+                    maxHp = 155; speed = 120; radius = 25; attackDamage = 24; range = 44; attackCooldown = 1.05f; break;
+            }
+            hp = maxHp;
+        }
+    }
+
+    private static final class Building {
+        BuildingType type;
+        int team;
+        float x, y, w, h, hp, maxHp;
+        Building(BuildingType type, int team, float x, float y, float w, float h, float hp) {
+            this.type = type; this.team = team; this.x = x; this.y = y; this.w = w; this.h = h; this.hp = hp; this.maxHp = hp;
+        }
+    }
+
+    private static final class Deco {
+        int kind;
+        float x, y, s;
+        Deco(int kind, float x, float y, float s) { this.kind = kind; this.x = x; this.y = y; this.s = s; }
+    }
+
+    public GameView(Context context) {
+        super(context);
+        holder = getHolder();
+        holder.addCallback(this);
+        setFocusable(true);
+        setKeepScreenOn(true);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        p.setStrokeJoin(Paint.Join.ROUND);
+        text.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.BOLD));
+        buildDecor();
+    }
+
+    private void buildDecor() {
+        deco.clear();
+        for (int i = 0; i < 185; i++) {
+            float x = 100 + random.nextFloat() * (WORLD_W - 200);
+            float y = 100 + random.nextFloat() * (WORLD_H - 200);
+            if (distance(x, y, 800, 800) < 430 || distance(x, y, 2400, 1680) < 430) continue;
+            int kind = random.nextInt(100) < 68 ? 0 : (random.nextBoolean() ? 1 : 2);
+            deco.add(new Deco(kind, x, y, 0.75f + random.nextFloat() * 0.65f));
+        }
+    }
+
+    private void resetGame(int diff) {
+        difficulty = diff;
+        mode = Mode.GAME;
+        units.clear(); buildings.clear(); selected.clear();
+        resourcesFood = 520; resourcesWood = 480; resourcesGold = 340;
+        gameOver = false; endText = ""; playerPop = 0; aiPop = 0;
+        camX = 790; camY = 820; zoom = 0.92f;
+        aiTimerMs = SystemClock.uptimeMillis();
+        incomeTimerMs = aiTimerMs;
+
+        buildings.add(new Building(BuildingType.TOWN, TEAM_PLAYER, 760, 760, 210, 160, 1200));
+        buildings.add(new Building(BuildingType.BARRACKS, TEAM_PLAYER, 1050, 870, 160, 120, 760));
+        buildings.add(new Building(BuildingType.HOUSE, TEAM_PLAYER, 590, 980, 120, 90, 520));
+        buildings.add(new Building(BuildingType.TOWER, TEAM_PLAYER, 1170, 690, 80, 80, 680));
+        buildings.add(new Building(BuildingType.WALL, TEAM_PLAYER, 480, 600, 680, 50, 900));
+        buildings.add(new Building(BuildingType.WALL, TEAM_PLAYER, 1170, 650, 50, 380, 900));
+        buildings.add(new Building(BuildingType.KEEP, TEAM_AI, 2410, 1690, 220, 180, 1500));
+        buildings.add(new Building(BuildingType.BARRACKS, TEAM_AI, 2180, 1520, 160, 120, 760));
+        buildings.add(new Building(BuildingType.HOUSE, TEAM_AI, 2670, 1500, 120, 90, 520));
+        buildings.add(new Building(BuildingType.TOWER, TEAM_AI, 2240, 1900, 80, 80, 680));
+
+        int id = 1;
+        for (int i = 0; i < 6; i++) units.add(makeUnit(id++, TEAM_PLAYER, UnitType.VILLAGER, 700 + i * 34, 920 + (i % 2) * 35));
+        for (int i = 0; i < 5; i++) units.add(makeUnit(id++, TEAM_PLAYER, UnitType.SWORD, 930 + i * 34, 1030 + (i % 2) * 40));
+        for (int i = 0; i < 4; i++) units.add(makeUnit(id++, TEAM_PLAYER, UnitType.ARCHER, 1010 + i * 34, 1125));
+        units.add(makeUnit(id++, TEAM_PLAYER, UnitType.CAVALRY, 880, 1160));
+        units.add(makeUnit(id++, TEAM_PLAYER, UnitType.CAVALRY, 930, 1190));
+
+        for (int i = 0; i < 6 + difficulty * 2; i++) units.add(makeUnit(id++, TEAM_AI, UnitType.SWORD, 2250 + (i % 5) * 40, 1800 + (i / 5) * 45));
+        for (int i = 0; i < 4 + difficulty; i++) units.add(makeUnit(id++, TEAM_AI, UnitType.ARCHER, 2350 + i * 38, 1900));
+        for (int i = 0; i < 1 + difficulty; i++) units.add(makeUnit(id++, TEAM_AI, UnitType.CAVALRY, 2570 + i * 50, 1790));
+        recountPop();
+        toast("Toque numa tropa; depois toque no terreno para mover.");
+    }
+
+    private Unit makeUnit(int id, int team, UnitType type, float x, float y) {
+        return new Unit(id, team, type, x, y);
+    }
+
+    @Override public void surfaceCreated(SurfaceHolder holder) { surfaceReady = true; resumeGame(); }
+    @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) { surfaceReady = true; }
+    @Override public void surfaceDestroyed(SurfaceHolder holder) { surfaceReady = false; pauseGame(); }
+
+    public void resumeGame() {
+        if (running) return;
+        running = true;
+        loopThread = new Thread(this, "ImperiumValeGameLoop");
+        loopThread.start();
+    }
+
+    public void pauseGame() {
+        running = false;
+        Thread t = loopThread;
+        if (t != null) {
+            try { t.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        }
+        loopThread = null;
