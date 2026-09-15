@@ -44,8 +44,13 @@ if (( W < H )); then
   H="$T"
 fi
 
-# Verified against the 2400x1080 menu capture: JOGAR is centered near 65% Y.
-adb shell input tap $((W / 2)) $((H * 65 / 100))
+# Menu layout can shift slightly across Android/emulator insets. These centered
+# taps cover the full JOGAR button band; once the match opens, later taps land
+# harmlessly on open terrain.
+for YP in 65 62 59; do
+  adb shell input tap $((W / 2)) $((H * YP / 100))
+  sleep 0.45
+done
 sleep 2
 assert_alive "HD match startup"
 adb exec-out screencap -p > "$OUT/smoke-game.png"
@@ -67,6 +72,9 @@ for i in $(seq 1 24); do
   Y=$((H * 18 / 100 + (i % 5) * H * 12 / 100))
   adb shell input tap "$X" "$Y"
 done
+# Camera gesture stress as well as taps.
+adb shell input swipe $((W * 55 / 100)) $((H * 48 / 100)) $((W * 40 / 100)) $((H * 40 / 100)) 500
+adb shell input swipe $((W * 45 / 100)) $((H * 48 / 100)) $((W * 60 / 100)) $((H * 55 / 100)) 500
 sleep 8
 assert_alive "touch stress"
 
