@@ -1,0 +1,201 @@
+name: Build Imperium Vale APK
+
+on:
+  push:
+    branches:
+      - build/imperium-vale-apk
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Assemble project files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/imperium-build/project"
+          JAVA="$ROOT/app/src/main/java/com/imperiumvale/game"
+          mkdir -p "$JAVA"
+
+          cat "$GITHUB_WORKSPACE"/imperium-build/GameView.part00 \
+              "$GITHUB_WORKSPACE"/imperium-build/GameView.part01 \
+              "$GITHUB_WORKSPACE"/imperium-build/GameView.part02 \
+              "$GITHUB_WORKSPACE"/imperium-build/GameView.part03 \
+              > "$JAVA/GameView.java"
+
+          cat > "$JAVA/MainActivity.java" <<'EOF'
+          package com.imperiumvale.game;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.view.View;
+          import android.view.Window;
+          import android.view.WindowInsets;
+          import android.view.WindowInsetsController;
+
+          public final class MainActivity extends Activity {
+              private GameView gameView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  requestWindowFeature(Window.FEATURE_NO_TITLE);
+                  hideSystemUi();
+                  gameView = new GameView(this);
+                  setContentView(gameView);
+              }
+
+              private void hideSystemUi() {
+                  if (android.os.Build.VERSION.SDK_INT >= 30) {
+                      WindowInsetsController c = getWindow().getInsetsController();
+                      if (c != null) {
+                          c.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                          c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                      }
+                  } else {
+                      getWindow().getDecorView().setSystemUiVisibility(
+                          View.SYSTEM_UI_FLAG_FULLSCREEN |
+                          View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                          View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                          View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                          View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                          View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                      );
+                  }
+              }
+
+              @Override protected void onResume() {
+                  super.onResume();
+                  hideSystemUi();
+                  if (gameView != null) gameView.resumeGame();
+              }
+
+              @Override protected void onPause() {
+                  if (gameView != null) gameView.pauseGame();
+                  super.onPause();
+              }
+          }
+          EOF
+
+          cat > "$ROOT/settings.gradle" <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "ImperiumVale"
+          include(":app")
+          EOF
+
+          cat > "$ROOT/build.gradle" <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.7.3' apply false
+          }
+          EOF
+
+          cat > "$ROOT/app/build.gradle" <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.imperiumvale.game'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.imperiumvale.game'
+                  minSdk 26
+                  targetSdk 35
+                  versionCode 1
+                  versionName '0.3.0-native'
+              }
+
+              buildTypes {
+                  debug {
+                      minifyEnabled false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOF
+
+          mkdir -p "$ROOT/app/src/main"
+          cat > "$ROOT/app/src/main/AndroidManifest.xml" <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-feature android:glEsVersion="0x00030000" android:required="false" />
+              <application
+                  android:allowBackup="true"
+                  android:label="Imperium Vale"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
+                  android:hardwareAccelerated="true"
+                  android:largeHeap="false"
+                  android:supportsRtl="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:configChanges="orientation|screenSize|keyboardHidden|density|uiMode"
+                      android:screenOrientation="landscape"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+      - name: Build debug APK
+        working-directory: imperium-build/project
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p output
+          cp imperium-build/project/app/build/outputs/apk/debug/app-debug.apk \
+             output/Imperium-Vale-v0.3.0-native.apk
+          sha256sum output/Imperium-Vale-v0.3.0-native.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Imperium-Vale-v0.3.0-native-apk
+          path: output/Imperium-Vale-v0.3.0-native.apk
+          if-no-files-found: error
+          retention-days: 7
