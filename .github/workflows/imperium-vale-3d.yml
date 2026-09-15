@@ -18,9 +18,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate v0.9 sources
+      - name: Generate v0.10 sources
         shell: bash
-        run: python3 imperium-3d/tools/upgrade_v09.py
+        run: |
+          python3 imperium-3d/tools/upgrade_v09.py
+          python3 imperium-3d/tools/upgrade_v10.py
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -66,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: imperium-vale-3d-smoke-screens-v0.9
+          name: imperium-vale-3d-smoke-screens-v0.10
           path: |
             imperium-3d/smoke-menu.png
             imperium-3d/smoke-game.png
@@ -79,13 +81,13 @@ jobs:
         run: |
           mkdir -p output
           cp imperium-3d/android/build/outputs/apk/debug/android-debug.apk \
-            output/Imperium-Vale-3D-v0.9.0-alpha.apk
-          sha256sum output/Imperium-Vale-3D-v0.9.0-alpha.apk
+            output/Imperium-Vale-3D-v0.10.0-alpha.apk
+          sha256sum output/Imperium-Vale-3D-v0.10.0-alpha.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Imperium-Vale-3D-v0.9.0-alpha-apk
-          path: output/Imperium-Vale-3D-v0.9.0-alpha.apk
+          name: Imperium-Vale-3D-v0.10.0-alpha-apk
+          path: output/Imperium-Vale-3D-v0.10.0-alpha.apk
           if-no-files-found: error
           retention-days: 7
